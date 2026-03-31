@@ -17,7 +17,7 @@ See README.md for full stack details.
 ### channels
 - id, name, niche, status, platform_ids, prompt, created_at
 
-### opportunities  
+### opportunities
 - id, name, niche, score, trend_pct, competition, cpm_range, why, status, created_at
 
 ### videos
