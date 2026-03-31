@@ -1,23 +1,23 @@
-# ─── Dependencies ───────────────────────────────────────
+# Dependencies
 node_modules/
 .pnp
 .pnp.js
 
-# ─── Environment Variables ──────────────────────────────
+# Environment Variables
 .env
 .env.local
 .env.development
 .env.production
 .env.*.local
 
-# ─── Build Outputs ──────────────────────────────────────
+# Build Outputs
 dist/
 build/
 out/
 .next/
 .nuxt/
 
-# ─── Logs ───────────────────────────────────────────────
+# Logs
 logs/
 *.log
 npm-debug.log*
@@ -25,7 +25,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# ─── OS Files ───────────────────────────────────────────
+# OS Files
 .DS_Store
 .DS_Store?
 ._*
@@ -34,7 +34,7 @@ pnpm-debug.log*
 Thumbs.db
 Desktop.ini
 
-# ─── IDEs & Editors ─────────────────────────────────────
+# IDEs & Editors
 .vscode/
 .idea/
 *.swp
@@ -42,11 +42,11 @@ Desktop.ini
 *.sublime-project
 *.sublime-workspace
 
-# ─── N8N ────────────────────────────────────────────────
+# N8N
 .n8n/
 n8n-data/
 
-# ─── Media & Generated Files ────────────────────────────
+# Media & Generated Files
 *.mp4
 *.mp3
 *.wav
@@ -56,10 +56,10 @@ temp/
 generated/
 uploads/
 
-# ─── Supabase ───────────────────────────────────────────
+# Supabase
 .supabase/
 
-# ─── Misc ───────────────────────────────────────────────
+# Misc
 *.zip
 *.tar.gz
 coverage/
