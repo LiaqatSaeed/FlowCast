@@ -1,8 +1,123 @@
 {
-  "name": "script-factory",
-  "nodes": [],
-  "connections": {},
+  "name": "WF-02: FlowCast Script Factory",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "node-schedule",
+      "name": "Daily 8AM Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.FLOWCAST_API_URL }}/api/channels",
+        "sendHeaders": true,
+        "headers": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.FLOWCAST_API_TOKEN }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-get-channels",
+      "name": "GET Active Channels",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst channels = (response.data || []).filter(ch => ch.status === 'active');\nreturn channels.map(ch => ({ json: ch }));"
+      },
+      "id": "node-filter-active",
+      "name": "Filter Active Channels",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "node-batch",
+      "name": "Process One at a Time",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.FLOWCAST_API_URL }}/api/queue/generate",
+        "sendHeaders": true,
+        "headers": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.FLOWCAST_API_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "channel_id",
+              "value": "={{ $json.id }}"
+            },
+            {
+              "name": "topic",
+              "value": "={{ $json.niche }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-generate",
+      "name": "POST /api/queue/generate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "Daily 8AM Trigger": {
+      "main": [[{ "node": "GET Active Channels", "type": "main", "index": 0 }]]
+    },
+    "GET Active Channels": {
+      "main": [[{ "node": "Filter Active Channels", "type": "main", "index": 0 }]]
+    },
+    "Filter Active Channels": {
+      "main": [[{ "node": "Process One at a Time", "type": "main", "index": 0 }]]
+    },
+    "Process One at a Time": {
+      "main": [[{ "node": "POST /api/queue/generate", "type": "main", "index": 0 }]]
+    },
+    "POST /api/queue/generate": {
+      "main": [[{ "node": "Process One at a Time", "type": "main", "index": 0 }]]
+    }
+  },
   "active": false,
-  "settings": {},
-  "tags": ["flowcast"]
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": ["flowcast"],
+  "notes": "Runs daily at 8:00 AM. Fetches all active channels and generates one script per channel using the Claude API via the FlowCast backend. Requires: FLOWCAST_API_URL, FLOWCAST_API_TOKEN."
 }

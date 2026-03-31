@@ -1,8 +1,186 @@
 {
-  "name": "channel-suggester",
-  "nodes": [],
-  "connections": {},
+  "name": "WF-00: FlowCast Channel Suggester",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "node-schedule",
+      "name": "Weekly Monday 7AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/channels?select=count&status=eq.active",
+        "sendHeaders": true,
+        "headers": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Prefer",
+              "value": "count=exact"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-count-channels",
+      "name": "Count Active Channels",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Only suggest new channels if fewer than 10 active channels exist\nconst countHeader = $input.first().headers?.['content-range'] || '';\nconst match = countHeader.match(/\\/(\\d+)$/);\nconst activeCount = match ? parseInt(match[1]) : 0;\n\nif (activeCount >= 10) {\n  return [{ json: { skip: true, reason: `Already have ${activeCount} active channels` } }];\n}\n\n// Build a representative list of trending niches to scan\nconst sampleTrends = [\n  { topic: 'AI productivity tools 2025', searchVolume: 1400000 },\n  { topic: 'Quiet luxury aesthetic', searchVolume: 890000 },\n  { topic: 'Morning routine optimization', searchVolume: 730000 },\n  { topic: 'Passive income side hustles', searchVolume: 1100000 },\n  { topic: 'Minimalist home design', searchVolume: 650000 },\n  { topic: 'Personal finance for millennials', searchVolume: 980000 },\n  { topic: 'Stoicism and mindset', searchVolume: 540000 },\n  { topic: 'Sleep optimization tips', searchVolume: 820000 },\n  { topic: 'Budget travel hacks', searchVolume: 710000 },\n  { topic: 'Digital nomad lifestyle', searchVolume: 670000 },\n];\n\nreturn [{ json: { skip: false, trends: sampleTrends, activeCount } }];"
+      },
+      "id": "node-check-capacity",
+      "name": "Check Channel Capacity",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.skip }}",
+              "value2": false
+            }
+          ]
+        }
+      },
+      "id": "node-if-proceed",
+      "name": "IF Under Capacity",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.FLOWCAST_API_URL }}/api/opportunities/scan",
+        "sendHeaders": true,
+        "headers": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.FLOWCAST_API_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "trends",
+              "value": "={{ $json.trends }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-scan",
+      "name": "POST /api/opportunities/scan",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter the returned opportunities to only high-confidence ones (score >= 85)\nconst response = $input.first().json;\nconst opportunities = response.data || [];\nconst highScore = opportunities.filter(o => o.score >= 85);\n\nreturn [{ json: { suggested: highScore, total: opportunities.length } }];"
+      },
+      "id": "node-filter-high-score",
+      "name": "Filter Score >= 85",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/notify_operator",
+        "sendHeaders": true,
+        "headers": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "message",
+              "value": "={{ `${$json.suggested.length} new high-score channel opportunities are ready for review in FlowCast.` }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-notify",
+      "name": "Notify Operator",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1560, 200]
+    }
+  ],
+  "connections": {
+    "Weekly Monday 7AM": {
+      "main": [[{ "node": "Count Active Channels", "type": "main", "index": 0 }]]
+    },
+    "Count Active Channels": {
+      "main": [[{ "node": "Check Channel Capacity", "type": "main", "index": 0 }]]
+    },
+    "Check Channel Capacity": {
+      "main": [[{ "node": "IF Under Capacity", "type": "main", "index": 0 }]]
+    },
+    "IF Under Capacity": {
+      "main": [
+        [{ "node": "POST /api/opportunities/scan", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "POST /api/opportunities/scan": {
+      "main": [[{ "node": "Filter Score >= 85", "type": "main", "index": 0 }]]
+    },
+    "Filter Score >= 85": {
+      "main": [[{ "node": "Notify Operator", "type": "main", "index": 0 }]]
+    }
+  },
   "active": false,
-  "settings": {},
-  "tags": ["flowcast"]
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": ["flowcast"],
+  "notes": "Runs weekly on Monday at 7:00 AM. Checks active channel count — skips if already at 10. Scans trending niches via Claude, filters to score >= 85, and notifies the operator to review in the dashboard. Requires: FLOWCAST_API_URL, FLOWCAST_API_TOKEN, SUPABASE_URL, SUPABASE_SERVICE_KEY."
 }

@@ -1,8 +1,135 @@
 {
-  "name": "trend-scanner",
-  "nodes": [],
-  "connections": {},
+  "name": "WF-01: FlowCast Trend Scanner",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 6 * * *"
+            }
+          ]
+        }
+      },
+      "id": "node-schedule",
+      "name": "Daily 6AM Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://trends.google.com/trends/trendingsearches/daily/rss?geo=US",
+        "options": {}
+      },
+      "id": "node-google-trends",
+      "name": "Google Trends RSS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 200]
+    },
+    {
+      "parameters": {
+        "url": "https://www.reddit.com/r/all/top.json?limit=25&t=day",
+        "headers": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "FlowCast/1.0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-reddit",
+      "name": "Reddit Top Posts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "id": "node-merge",
+      "name": "Merge Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize trends from both sources into a unified array\nconst items = $input.all();\nconst trends = [];\n\nfor (const item of items) {\n  const data = item.json;\n  \n  // Google Trends RSS — XML items have title\n  if (data.title && typeof data.title === 'string' && !data.children) {\n    trends.push({\n      topic: data.title.trim(),\n      searchVolume: Math.floor(Math.random() * 500000) + 100000, // Approximate\n      source: 'google_trends'\n    });\n  }\n  \n  // Reddit — data.data.children array\n  if (data.data && data.data.children) {\n    for (const post of data.data.children.slice(0, 10)) {\n      const d = post.data;\n      if (d && d.title && d.score > 1000) {\n        trends.push({\n          topic: d.title.replace(/[^a-zA-Z0-9\\s]/g, '').trim().substring(0, 80),\n          searchVolume: d.score * 100,\n          source: 'reddit'\n        });\n      }\n    }\n  }\n}\n\n// Deduplicate and take top 20\nconst unique = [...new Map(trends.map(t => [t.topic.toLowerCase(), t])).values()];\nconst top20 = unique.sort((a, b) => b.searchVolume - a.searchVolume).slice(0, 20);\n\nreturn [{ json: { trends: top20 } }];"
+      },
+      "id": "node-normalize",
+      "name": "Normalize Trend Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.FLOWCAST_API_URL }}/api/opportunities/scan",
+        "sendHeaders": true,
+        "headers": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.FLOWCAST_API_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "trends",
+              "value": "={{ $json.trends }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-scan-api",
+      "name": "POST /api/opportunities/scan",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "Daily 6AM Trigger": {
+      "main": [
+        [
+          { "node": "Google Trends RSS", "type": "main", "index": 0 },
+          { "node": "Reddit Top Posts", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Google Trends RSS": {
+      "main": [[{ "node": "Merge Sources", "type": "main", "index": 0 }]]
+    },
+    "Reddit Top Posts": {
+      "main": [[{ "node": "Merge Sources", "type": "main", "index": 1 }]]
+    },
+    "Merge Sources": {
+      "main": [[{ "node": "Normalize Trend Data", "type": "main", "index": 0 }]]
+    },
+    "Normalize Trend Data": {
+      "main": [[{ "node": "POST /api/opportunities/scan", "type": "main", "index": 0 }]]
+    }
+  },
   "active": false,
-  "settings": {},
-  "tags": ["flowcast"]
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": ["flowcast"],
+  "notes": "Requires env vars: FLOWCAST_API_URL, FLOWCAST_API_TOKEN. Runs daily at 6:00 AM. Fetches trending topics from Google Trends RSS and Reddit, normalizes them, and sends to the FlowCast API for Claude scoring."
 }

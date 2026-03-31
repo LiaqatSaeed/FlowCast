@@ -1,8 +1,148 @@
 {
-  "name": "analytics-sync",
-  "nodes": [],
-  "connections": {},
+  "name": "WF-05: FlowCast Analytics Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */6 * * *"
+            }
+          ]
+        }
+      },
+      "id": "node-schedule",
+      "name": "Every 6 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/channels?status=eq.active&select=id,name",
+        "sendHeaders": true,
+        "headers": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-get-channels",
+      "name": "Get Active Channels",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "node-batch",
+      "name": "One Channel at a Time",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://youtubeanalytics.googleapis.com/v2/reports?ids=channel==MINE&startDate={{ $today.minus({days:1}).toISODate() }}&endDate={{ $today.toISODate() }}&metrics=views,estimatedMinutesWatched,subscribersGained,estimatedRevenue&dimensions=day",
+        "sendHeaders": true,
+        "headers": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.YOUTUBE_ACCESS_TOKEN }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-yt-analytics",
+      "name": "YouTube Analytics API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ytData = $input.first().json;\nconst channelId = $('One Channel at a Time').first().json.id;\nconst today = new Date().toISOString().split('T')[0];\n\nconst rows = ytData.rows || [];\n\nif (rows.length === 0) {\n  return [{ json: { channel_id: channelId, date: today, views: 0, new_subscribers: 0, watch_time_seconds: 0, revenue: 0, avg_ctr: 0 } }];\n}\n\nconst [, views, minutesWatched, newSubs, revenue] = rows[0];\n\nreturn [{ json: {\n  channel_id: channelId,\n  date: today,\n  views: views || 0,\n  new_subscribers: newSubs || 0,\n  watch_time_seconds: Math.round((minutesWatched || 0) * 60),\n  revenue: revenue || 0,\n  avg_ctr: 0\n} }];"
+      },
+      "id": "node-normalize",
+      "name": "Normalize Analytics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/analytics",
+        "sendHeaders": true,
+        "headers": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "sendBodyType": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "node-upsert",
+      "name": "Upsert Analytics Row",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 300]
+    }
+  ],
+  "connections": {
+    "Every 6 Hours": {
+      "main": [[{ "node": "Get Active Channels", "type": "main", "index": 0 }]]
+    },
+    "Get Active Channels": {
+      "main": [[{ "node": "One Channel at a Time", "type": "main", "index": 0 }]]
+    },
+    "One Channel at a Time": {
+      "main": [[{ "node": "YouTube Analytics API", "type": "main", "index": 0 }]]
+    },
+    "YouTube Analytics API": {
+      "main": [[{ "node": "Normalize Analytics", "type": "main", "index": 0 }]]
+    },
+    "Normalize Analytics": {
+      "main": [[{ "node": "Upsert Analytics Row", "type": "main", "index": 0 }]]
+    },
+    "Upsert Analytics Row": {
+      "main": [[{ "node": "One Channel at a Time", "type": "main", "index": 0 }]]
+    }
+  },
   "active": false,
-  "settings": {},
-  "tags": ["flowcast"]
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": ["flowcast"],
+  "notes": "Runs every 6 hours. Pulls yesterday's stats from YouTube Analytics API per channel and upserts into the analytics table. Requires: YOUTUBE_ACCESS_TOKEN, SUPABASE_URL, SUPABASE_SERVICE_KEY."
 }

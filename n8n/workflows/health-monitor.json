@@ -1,8 +1,225 @@
 {
-  "name": "health-monitor",
-  "nodes": [],
-  "connections": {},
+  "name": "WF-06: FlowCast Health Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "node-schedule",
+      "name": "Daily 9AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/channels?status=eq.active&select=id,name,health_score,subscribers,total_views,monthly_revenue,created_at",
+        "sendHeaders": true,
+        "headers": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-get-channels",
+      "name": "Get Active Channels",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const channels = $input.all().map(i => i.json);\nconst thirtyDaysAgo = new Date();\nthirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);\n\nconst mature = channels.filter(ch => new Date(ch.created_at) < thirtyDaysAgo);\n\nconst scored = mature.map(ch => {\n  const subScore  = Math.min((ch.subscribers / 1000) * 40, 40);\n  const revScore  = Math.min((parseFloat(ch.monthly_revenue) / 100) * 30, 30);\n  const baseScore = (ch.health_score / 100) * 30;\n  const newHealth = Math.round(subScore + revScore + baseScore);\n  return { ...ch, newHealth, needsPause: newHealth < 40 };\n});\n\nreturn scored.map(ch => ({ json: ch }));"
+      },
+      "id": "node-calc-health",
+      "name": "Calculate Health Scores",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/channels?id=eq.{{ $json.id }}",
+        "sendHeaders": true,
+        "headers": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "health_score",
+              "value": "={{ $json.newHealth }}"
+            },
+            {
+              "name": "status",
+              "value": "={{ $json.needsPause ? 'paused' : 'active' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-update-channel",
+      "name": "Update Channel Health",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.needsPause }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "node-if-pause",
+      "name": "IF Health Below 40",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.FLOWCAST_API_URL }}/api/channels/{{ $json.id }}",
+        "sendHeaders": true,
+        "headers": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.FLOWCAST_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "paused"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-pause-channel",
+      "name": "Pause Low-Health Channel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.FLOWCAST_API_URL }}/health",
+        "sendHeaders": true,
+        "headers": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.FLOWCAST_API_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "event",
+              "value": "channel_paused"
+            },
+            {
+              "name": "channel_id",
+              "value": "={{ $json.id }}"
+            },
+            {
+              "name": "channel_name",
+              "value": "={{ $json.name }}"
+            },
+            {
+              "name": "health_score",
+              "value": "={{ $json.newHealth }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-notify",
+      "name": "Notify Dashboard",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1560, 200]
+    }
+  ],
+  "connections": {
+    "Daily 9AM": {
+      "main": [[{ "node": "Get Active Channels", "type": "main", "index": 0 }]]
+    },
+    "Get Active Channels": {
+      "main": [[{ "node": "Calculate Health Scores", "type": "main", "index": 0 }]]
+    },
+    "Calculate Health Scores": {
+      "main": [[{ "node": "Update Channel Health", "type": "main", "index": 0 }]]
+    },
+    "Update Channel Health": {
+      "main": [[{ "node": "IF Health Below 40", "type": "main", "index": 0 }]]
+    },
+    "IF Health Below 40": {
+      "main": [
+        [{ "node": "Pause Low-Health Channel", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Pause Low-Health Channel": {
+      "main": [[{ "node": "Notify Dashboard", "type": "main", "index": 0 }]]
+    }
+  },
   "active": false,
-  "settings": {},
-  "tags": ["flowcast"]
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": ["flowcast"],
+  "notes": "Runs daily at 9:00 AM. Evaluates health score for all mature channels (30+ days old). Channels scoring < 40 are automatically paused and the dashboard is notified. Health formula: subscribers (40pts) + revenue (30pts) + baseline health (30pts). Requires: SUPABASE_URL, SUPABASE_SERVICE_KEY, FLOWCAST_API_URL, FLOWCAST_API_TOKEN."
 }

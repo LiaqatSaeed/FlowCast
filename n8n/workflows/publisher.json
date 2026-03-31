@@ -1,8 +1,277 @@
 {
-  "name": "publisher",
-  "nodes": [],
-  "connections": {},
+  "name": "WF-04: FlowCast Publisher",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */3 * * *"
+            }
+          ]
+        }
+      },
+      "id": "node-schedule",
+      "name": "Every 3 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/videos?status=eq.ready&select=*,channels(id,name,platforms,prompt)&order=created_at.asc&limit=10",
+        "sendHeaders": true,
+        "headers": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-get-ready",
+      "name": "Get Ready Videos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "node-batch",
+      "name": "One Video at a Time",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "operation": "contains",
+              "value1": "={{ ($json.channels?.platforms || []).join(',') }}",
+              "value2": "YT",
+              "output": 0
+            },
+            {
+              "operation": "contains",
+              "value1": "={{ ($json.channels?.platforms || []).join(',') }}",
+              "value2": "IG",
+              "output": 1
+            },
+            {
+              "operation": "contains",
+              "value1": "={{ ($json.channels?.platforms || []).join(',') }}",
+              "value2": "TT",
+              "output": 2
+            }
+          ]
+        },
+        "fallbackOutput": "none"
+      },
+      "id": "node-switch",
+      "name": "Route by Platform",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
+        "sendHeaders": true,
+        "headers": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.YOUTUBE_ACCESS_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "snippet",
+              "value": "={ \"title\": \"{{ $json.title }}\", \"description\": \"{{ ($json.hashtags || []).map(h => '#' + h).join(' ') }}\", \"tags\": {{ JSON.stringify($json.hashtags || []) }}, \"categoryId\": \"22\" }"
+            },
+            {
+              "name": "status",
+              "value": "={ \"privacyStatus\": \"public\", \"selfDeclaredMadeForKids\": false }"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-youtube",
+      "name": "Upload to YouTube",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 160]
+    },
+    {
+      "parameters": {
+        "url": "https://graph.facebook.com/v18.0/me/videos",
+        "sendHeaders": true,
+        "headers": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.META_ACCESS_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "description",
+              "value": "={{ $json.title + ' ' + ($json.hashtags || []).map(h => '#' + h).join(' ') }}"
+            },
+            {
+              "name": "published",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-instagram",
+      "name": "Upload to Instagram Reels",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://open.tiktokapis.com/v2/post/publish/video/init/",
+        "sendHeaders": true,
+        "headers": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.TIKTOK_ACCESS_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json; charset=UTF-8"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "post_info",
+              "value": "={ \"title\": \"{{ $json.title }}\", \"privacy_level\": \"PUBLIC_TO_EVERYONE\", \"disable_comment\": false }"
+            },
+            {
+              "name": "source_info",
+              "value": "={ \"source\": \"FILE_UPLOAD\", \"video_size\": 0, \"chunk_size\": 0, \"total_chunk_count\": 1 }"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-tiktok",
+      "name": "Upload to TikTok",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 440]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/videos?id=eq.{{ $json.id }}",
+        "sendHeaders": true,
+        "headers": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "published"
+            },
+            {
+              "name": "published_at",
+              "value": "={{ new Date().toISOString() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-mark-published",
+      "name": "Mark as Published",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 300]
+    }
+  ],
+  "connections": {
+    "Every 3 Hours": {
+      "main": [[{ "node": "Get Ready Videos", "type": "main", "index": 0 }]]
+    },
+    "Get Ready Videos": {
+      "main": [[{ "node": "One Video at a Time", "type": "main", "index": 0 }]]
+    },
+    "One Video at a Time": {
+      "main": [[{ "node": "Route by Platform", "type": "main", "index": 0 }]]
+    },
+    "Route by Platform": {
+      "main": [
+        [{ "node": "Upload to YouTube", "type": "main", "index": 0 }],
+        [{ "node": "Upload to Instagram Reels", "type": "main", "index": 0 }],
+        [{ "node": "Upload to TikTok", "type": "main", "index": 0 }]
+      ]
+    },
+    "Upload to YouTube": {
+      "main": [[{ "node": "Mark as Published", "type": "main", "index": 0 }]]
+    },
+    "Upload to Instagram Reels": {
+      "main": [[{ "node": "Mark as Published", "type": "main", "index": 0 }]]
+    },
+    "Upload to TikTok": {
+      "main": [[{ "node": "Mark as Published", "type": "main", "index": 0 }]]
+    },
+    "Mark as Published": {
+      "main": [[{ "node": "One Video at a Time", "type": "main", "index": 0 }]]
+    }
+  },
   "active": false,
-  "settings": {},
-  "tags": ["flowcast"]
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": ["flowcast"],
+  "notes": "Runs every 3 hours. Picks up to 10 ready videos, routes them by platform (YT/IG/TT), uploads via respective platform APIs, then marks as published. Requires: YOUTUBE_ACCESS_TOKEN, META_ACCESS_TOKEN, TIKTOK_ACCESS_TOKEN, SUPABASE_URL, SUPABASE_SERVICE_KEY."
 }
