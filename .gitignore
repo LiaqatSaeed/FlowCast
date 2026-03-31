@@ -1,0 +1,66 @@
+# ─── Dependencies ───────────────────────────────────────
+node_modules/
+.pnp
+.pnp.js
+
+# ─── Environment Variables ──────────────────────────────
+.env
+.env.local
+.env.development
+.env.production
+.env.*.local
+
+# ─── Build Outputs ──────────────────────────────────────
+dist/
+build/
+out/
+.next/
+.nuxt/
+
+# ─── Logs ───────────────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ─── OS Files ───────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+Desktop.ini
+
+# ─── IDEs & Editors ─────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# ─── N8N ────────────────────────────────────────────────
+.n8n/
+n8n-data/
+
+# ─── Media & Generated Files ────────────────────────────
+*.mp4
+*.mp3
+*.wav
+*.mov
+tmp/
+temp/
+generated/
+uploads/
+
+# ─── Supabase ───────────────────────────────────────────
+.supabase/
+
+# ─── Misc ───────────────────────────────────────────────
+*.zip
+*.tar.gz
+coverage/
+.cache/
