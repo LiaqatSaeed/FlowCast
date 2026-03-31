@@ -1,21 +1,10 @@
-const { createClient } = require('@supabase/supabase-js');
-
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_KEY environment variables');
-}
-
 /**
- * Supabase admin client with service key — bypasses RLS for server-side operations.
- * Never expose this client or its key to the frontend.
+ * DEPRECATED — Supabase has been replaced with PostgreSQL + Docker.
+ * This file is kept as a placeholder to avoid import errors during migration.
+ * All database access should go through apps/api/src/lib/db.js
+ *
+ * Delete this file once all references to supabase.js have been updated.
  */
-const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-});
 
-module.exports = supabase;
+const db = require('./db');
+module.exports = db;

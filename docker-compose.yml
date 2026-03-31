@@ -1,0 +1,81 @@
+version: '3.9'
+
+services:
+  # ─── PostgreSQL Database ────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: flowcast_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: flowcast
+      POSTGRES_USER: flowcast
+      POSTGRES_PASSWORD: flowcast_secret
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./apps/api/src/db/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U flowcast -d flowcast']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── pgAdmin (Database GUI) ──────────────────────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: flowcast_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@flowcast.ai
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - '5050:80'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
+  # ─── API Server ──────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: flowcast_api
+    restart: unless-stopped
+    env_file:
+      - ./apps/api/.env
+    environment:
+      DATABASE_URL: postgresql://flowcast:flowcast_secret@postgres:5432/flowcast
+      NODE_ENV: development
+    ports:
+      - '3000:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./apps/api:/app
+      - /app/node_modules
+      - /tmp/flowcast:/tmp/flowcast
+
+  # ─── Dashboard ───────────────────────────────────────────────────────────────
+  dashboard:
+    image: node:20-alpine
+    container_name: flowcast_dashboard
+    working_dir: /app
+    restart: unless-stopped
+    env_file:
+      - ./apps/dashboard/.env
+    ports:
+      - '5173:5173'
+    depends_on:
+      - api
+    volumes:
+      - ./apps/dashboard:/app
+      - /app/node_modules
+    command: sh -c 'npm install && npm run dev -- --host 0.0.0.0'
+
+volumes:
+  postgres_data:
+  pgadmin_data:

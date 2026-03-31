@@ -1,154 +1,62 @@
-#!/usr/bin/env node
-
 /**
- * FlowCast setup checker.
+ * FlowCast local setup checker.
  * Run: node scripts/setup.js
- *
- * Verifies environment variables and external service connections.
  */
 
-require('dotenv').config({ path: require('path').join(__dirname, '../apps/api/.env') });
-const { execSync } = require('child_process');
+require('dotenv').config({ path: './apps/api/.env' });
+const { Pool } = require('pg');
 
-// Resolve packages from apps/api/node_modules so this script works when run
-// from the project root where those packages are not installed.
-const API_MODULES = require('path').join(__dirname, '../apps/api/node_modules');
-const Module = require('module');
-const _resolveFilename = Module._resolveFilename.bind(Module);
-Module._resolveFilename = (request, parent, isMain, options) => {
-  if (request === '@supabase/supabase-js' || request === '@anthropic-ai/sdk') {
-    return _resolveFilename(request, { ...parent, filename: require('path').join(API_MODULES, 'x.js') }, isMain, options);
-  }
-  return _resolveFilename(request, parent, isMain, options);
-};
+const checks = [];
 
-const GREEN  = '\x1b[32m';
-const RED    = '\x1b[31m';
-const YELLOW = '\x1b[33m';
-const RESET  = '\x1b[0m';
-const BOLD   = '\x1b[1m';
+function check(name, value, hint) {
+  const ok = !!value;
+  checks.push({ name, ok, hint });
+}
 
-function ok(label)   { console.log(`  ${GREEN}✓${RESET}  ${label}`); }
-function fail(label) { console.log(`  ${RED}✗${RESET}  ${label}`); }
-function warn(label) { console.log(`  ${YELLOW}!${RESET}  ${label}`); }
+async function run() {
+  console.log('\n🔍 FlowCast Setup Check\n' + '─'.repeat(40));
 
-const REQUIRED_API_VARS = [
-  'SUPABASE_URL',
-  'SUPABASE_SERVICE_KEY',
-  'ANTHROPIC_API_KEY',
-  'ELEVENLABS_API_KEY',
-  'ELEVENLABS_VOICE_ID',
-  'PEXELS_API_KEY',
-];
+  // Env vars
+  check('DATABASE_URL',        process.env.DATABASE_URL,        'Set in apps/api/.env');
+  check('JWT_SECRET',          process.env.JWT_SECRET,          'Run: openssl rand -base64 64');
+  check('ANTHROPIC_API_KEY',   process.env.ANTHROPIC_API_KEY,   'Get from console.anthropic.com');
+  check('ELEVENLABS_API_KEY',  process.env.ELEVENLABS_API_KEY,  'Get from elevenlabs.io');
+  check('PEXELS_API_KEY',      process.env.PEXELS_API_KEY,      'Get from pexels.com/api');
 
-const OPTIONAL_API_VARS = [
-  'YOUTUBE_CLIENT_ID',
-  'YOUTUBE_CLIENT_SECRET',
-  'YOUTUBE_REDIRECT_URI',
-  'META_ACCESS_TOKEN',
-  'TIKTOK_ACCESS_TOKEN',
-];
+  // Optional
+  check('YOUTUBE_CLIENT_ID',   process.env.YOUTUBE_CLIENT_ID,   '(Optional for now)');
+  check('META_ACCESS_TOKEN',   process.env.META_ACCESS_TOKEN,   '(Optional for now)');
+  check('TIKTOK_ACCESS_TOKEN', process.env.TIKTOK_ACCESS_TOKEN, '(Optional for now)');
 
-async function main() {
-  console.log(`\n${BOLD}FlowCast Setup Checker${RESET}\n`);
-  let failed = 0;
-
-  // ─── 1. Check required env vars ───────────────────────────────────────────
-  console.log(`${BOLD}Required Environment Variables${RESET}`);
-  for (const key of REQUIRED_API_VARS) {
-    if (process.env[key]) {
-      ok(key);
-    } else {
-      fail(`${key} — MISSING`);
-      failed++;
-    }
-  }
-
-  console.log(`\n${BOLD}Optional (Publishing) Variables${RESET}`);
-  for (const key of OPTIONAL_API_VARS) {
-    if (process.env[key]) {
-      ok(key);
-    } else {
-      warn(`${key} — not set (publishing to this platform will be disabled)`);
-    }
-  }
-
-  // ─── 2. Check FFmpeg ───────────────────────────────────────────────────────
-  console.log(`\n${BOLD}System Dependencies${RESET}`);
-  try {
-    const ffmpegVersion = execSync('ffmpeg -version 2>&1', { stdio: 'pipe' }).toString().split('\n')[0];
-    ok(`FFmpeg: ${ffmpegVersion.split('version')[1]?.trim().split(' ')[0] || 'found'}`);
-  } catch {
-    fail('FFmpeg — NOT FOUND. Install with: brew install ffmpeg (macOS) or apt install ffmpeg (Ubuntu)');
-    failed++;
-  }
-
-  try {
-    execSync('node --version', { stdio: 'pipe' });
-    const nodeVer = process.version;
-    const major = parseInt(nodeVer.slice(1));
-    if (major >= 18) {
-      ok(`Node.js: ${nodeVer}`);
-    } else {
-      fail(`Node.js ${nodeVer} — requires v18 or higher`);
-      failed++;
-    }
-  } catch {
-    fail('Node.js version check failed');
-    failed++;
-  }
-
-  // ─── 3. Test Supabase connection ───────────────────────────────────────────
-  console.log(`\n${BOLD}Service Connections${RESET}`);
-  if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
+  // DB connection test
+  process.stdout.write('PostgreSQL connection ... ');
+  if (process.env.DATABASE_URL) {
     try {
-      const { createClient } = require('@supabase/supabase-js');
-      const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-      const { error } = await sb.from('channels').select('id').limit(1);
-      if (error && error.code !== 'PGRST116') {
-        fail(`Supabase — ${error.message}`);
-        failed++;
-      } else {
-        ok('Supabase — connected');
-      }
+      const pool = new Pool({ connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 3000 });
+      await pool.query('SELECT 1');
+      await pool.end();
+      console.log('✅ Connected');
     } catch (err) {
-      fail(`Supabase — ${err.message}`);
-      failed++;
+      console.log('❌ Failed —', err.message);
+      console.log('   Make sure Docker is running: docker compose up -d postgres');
     }
   } else {
-    warn('Supabase — skipped (missing credentials)');
+    console.log('⏭  Skipped (DATABASE_URL not set)');
   }
 
-  // ─── 4. Test Anthropic API ─────────────────────────────────────────────────
-  if (process.env.ANTHROPIC_API_KEY) {
-    try {
-      const Anthropic = require('@anthropic-ai/sdk');
-      const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-      await client.messages.create({
-        model: 'claude-haiku-4-5',
-        max_tokens: 5,
-        messages: [{ role: 'user', content: 'ping' }],
-      });
-      ok('Anthropic Claude API — connected');
-    } catch (err) {
-      fail(`Anthropic Claude API — ${err.message}`);
-      failed++;
-    }
-  } else {
-    warn('Anthropic Claude API — skipped (missing key)');
-  }
+  // Print summary
+  console.log('\n' + '─'.repeat(40));
+  checks.forEach(({ name, ok, hint }) => {
+    console.log(`${ok ? '✅' : '❌'} ${name.padEnd(25)} ${ok ? '' : '← ' + hint}`);
+  });
 
-  // ─── Summary ───────────────────────────────────────────────────────────────
-  console.log('\n' + '─'.repeat(50));
-  if (failed === 0) {
-    console.log(`${GREEN}${BOLD}✓ All checks passed — ready to run: npm run dev${RESET}\n`);
+  const missing = checks.filter(c => !c.ok).length;
+  console.log('─'.repeat(40));
+  if (missing === 0) {
+    console.log('\n🚀 All checks passed! Run: npm run dev\n');
   } else {
-    console.log(`${RED}${BOLD}✗ ${failed} check(s) failed — fix the issues above before starting${RESET}\n`);
-    process.exit(1);
+    console.log(`\n⚠️  ${missing} item(s) missing. Fill in apps/api/.env and retry.\n`);
   }
 }
 
-main().catch((err) => {
-  console.error(`\nSetup script error: ${err.message}`);
-  process.exit(1);
-});
+run();

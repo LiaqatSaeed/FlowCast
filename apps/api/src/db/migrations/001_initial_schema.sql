@@ -1,5 +1,18 @@
 -- FlowCast Initial Schema
--- Run this in Supabase SQL Editor or via migration tool
+-- PostgreSQL 16+
+-- Auto-executed by Docker on first container start
+
+-- ─── EXTENSIONS ───────────────────────────────────────────────────────────────
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+-- ─── USERS ────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS users (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  email          text NOT NULL UNIQUE,
+  password_hash  text NOT NULL,
+  role           text NOT NULL DEFAULT 'admin',
+  created_at     timestamptz NOT NULL DEFAULT now()
+);
 
 -- ─── OPPORTUNITIES ────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS opportunities (
@@ -76,25 +89,3 @@ CREATE INDEX IF NOT EXISTS idx_videos_channel          ON videos(channel_id);
 CREATE INDEX IF NOT EXISTS idx_videos_status           ON videos(status);
 CREATE INDEX IF NOT EXISTS idx_videos_published        ON videos(published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_analytics_channel_date  ON analytics(channel_id, date DESC);
-
--- ─── ROW LEVEL SECURITY ───────────────────────────────────────────────────────
-ALTER TABLE opportunities ENABLE ROW LEVEL SECURITY;
-ALTER TABLE channels      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE videos        ENABLE ROW LEVEL SECURITY;
-ALTER TABLE analytics     ENABLE ROW LEVEL SECURITY;
-
--- Authenticated users can read and write all rows.
--- The API uses the service key which bypasses RLS entirely.
--- These policies protect direct anon/user key access.
-
-CREATE POLICY "authenticated_all_opportunities" ON opportunities
-  FOR ALL TO authenticated USING (true) WITH CHECK (true);
-
-CREATE POLICY "authenticated_all_channels" ON channels
-  FOR ALL TO authenticated USING (true) WITH CHECK (true);
-
-CREATE POLICY "authenticated_all_videos" ON videos
-  FOR ALL TO authenticated USING (true) WITH CHECK (true);
-
-CREATE POLICY "authenticated_all_analytics" ON analytics
-  FOR ALL TO authenticated USING (true) WITH CHECK (true);

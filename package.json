@@ -6,8 +6,12 @@
     "dev": "concurrently \"npm run dev:api\" \"npm run dev:dashboard\"",
     "dev:api": "cd apps/api && npm run dev",
     "dev:dashboard": "cd apps/dashboard && npm run dev",
-    "install:all": "npm install && cd apps/api && npm install && cd ../dashboard && npm install",
-    "setup": "node scripts/setup.js"
+    "install:all": "cd apps/api && npm install && cd ../dashboard && npm install",
+    "setup": "node scripts/setup.js",
+    "migrate": "cd apps/api && npm run migrate",
+    "docker:up": "docker compose up",
+    "docker:down": "docker compose down",
+    "docker:reset": "docker compose down -v && docker compose up -d postgres"
   },
   "devDependencies": {
     "concurrently": "^8.2.0"
